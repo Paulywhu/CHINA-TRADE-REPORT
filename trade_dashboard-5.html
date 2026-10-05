@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中國進出口貿易數據監控面板 (AI 升級版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 p-6 min-h-screen">
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- 頂部標題與檔案上傳區 -->
+    <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">中國對外貿易監控儀表板 <span class="text-sm font-normal text-blue-600 bg-blue-100 px-2 py-1 rounded">✦ AI 升級版</span></h1>
+        <p class="text-sm text-slate-500 mt-1" id="dataStatus">請上傳您的貿易 Excel 報表以開始分析</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- 安全設計：API Key 輸入框，不會儲存在程式碼中 -->
+        <input type="password" id="geminiApiKey" placeholder="請貼上 Gemini API Key" class="border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-56" title="請至 Google AI Studio 取得金鑰">
+        
+        <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-5 rounded-lg shadow transition flex items-center gap-2">
+          <span>📂 上傳 Excel</span>
+          <input type="file" id="excelInput" accept=".xlsx, .xls" class="hidden">
+        </label>
+      </div>
+    </header>
+
+    <!-- 控制選單 -->
+    <div id="filterSection" class="hidden bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
+      <div class="flex items-center gap-3 border-r border-slate-200 pr-6">
+        <label class="font-semibold text-slate-700">指標：</label>
+        <div class="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
+          <button id="btnExport" class="px-4 py-1.5 rounded-md text-sm font-bold bg-white shadow-sm text-blue-600 transition-all">出口</button>
+          <button id="btnImport" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-all">進口</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="font-semibold text-slate-700">洲別：</label>
+        <select id="continentSelect" class="border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="font-semibold text-slate-700">國家/地區：</label>
+        <select id="countrySelect" class="border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+      </div>
+      <button id="btnAiAnalyze" class="ml-auto bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg shadow transition flex items-center gap-2">
+        <span>✨ 產生 AI 洞察報告</span>
+      </button>
+    </div>
+
+    <!-- AI 洞察報告區塊 -->
+    <div id="aiSection" class="hidden bg-gradient-to-r from-purple-50 to-indigo-50 p-6 rounded-xl shadow-sm border border-purple-100">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-xl">✨</span>
+        <h2 class="text-lg font-bold text-purple-900">Gemini 深度分析報告</h2>
+        <span id="aiLoading" class="hidden text-sm text-purple-600 font-medium ml-3 animate-pulse">AI 正在思考中，請稍候...</span>
+      </div>
+      <div id="aiContent" class="prose prose-purple max-w-none text-slate-700 text-sm leading-relaxed">
+        <!-- AI 內容將顯示於此 -->
+      </div>
+    </div>
+
+    <!-- 核心數據卡片區 -->
+    <div id="kpiSection" class="hidden grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" id="monthCardTitle">最新月份</span>
+          <span class="text-xs px-2 py-0.5 rounded font-bold" id="monthTag">單月</span>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900" id="monthTotal">-</div>
+        <div class="text-xs text-slate-400 mt-1 mb-3">單位：百萬美元</div>
+        <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-sm">
+          <span class="text-slate-500">較去年同期 (YoY)</span>
+          <span id="monthYoY" class="font-bold">-</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" id="quarterCardTitle">最新一季</span>
+          <span class="text-xs px-2 py-0.5 rounded font-bold" id="quarterTag">季度</span>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900" id="quarterTotal">-</div>
+        <div class="text-xs text-slate-400 mt-1 mb-3">單位：百萬美元</div>
+        <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-sm">
+          <span class="text-slate-500">較去年同期 (YoY)</span>
+          <span id="quarterYoY" class="font-bold">-</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" id="ytdCardTitle">年度累計 (YTD)</span>
+          <span class="text-xs px-2 py-0.5 rounded font-bold" id="ytdTag">累計</span>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900" id="ytdTotal">-</div>
+        <div class="text-xs text-slate-400 mt-1 mb-3">單位：百萬美元</div>
+        <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-sm">
+          <span class="text-slate-500">較去年同期 (YoY)</span>
+          <span id="ytdYoY" class="font-bold">-</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 視覺化圖表區 -->
+    <div id="chartSection" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-base font-bold text-slate-800 mb-4">成長率動能對比</h2>
+        <div class="h-64"><canvas id="growthComparisonChart"></canvas></div>
+      </div>
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-base font-bold text-slate-800 mb-4" id="continentOverviewChartTitle">各國成長率排名</h2>
+        <div class="h-64"><canvas id="continentCountriesChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let parsedData = {}; 
+    let allDates = []; 
+    let maxYear = 0, maxMonth = 0;
+    let growthChartInstance = null;
+    let continentChartInstance = null;
+    let currentTradeType = '出口';
+
+    document.getElementById('excelInput').addEventListener('change', handleFileUpload);
+    document.getElementById('btnExport').addEventListener('click', () => setTradeType('出口'));
+    document.getElementById('btnImport').addEventListener('click', () => setTradeType('進口'));
+    document.getElementById('btnAiAnalyze').addEventListener('click', generateAIAnalysis);
+
+    function setTradeType(type) {
+      currentTradeType = type;
+      const btnExport = document.getElementById('btnExport');
+      const btnImport = document.getElementById('btnImport');
+      const activeClass = "px-4 py-1.5 rounded-md text-sm font-bold bg-white shadow-sm text-blue-600 transition-all";
+      const inactiveClass = "px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-all";
+      btnExport.className = type === '出口' ? activeClass : inactiveClass;
+      btnImport.className = type === '進口' ? activeClass : inactiveClass;
+      
+      if(Object.keys(parsedData).length > 0) renderDashboard();
+      document.getElementById('aiSection').classList.add('hidden');
+    }
+
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawJson = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+        processTradeData(rawJson);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function processTradeData(rows) {
+      if (rows.length < 2) return;
+      const headers = rows[0];
+      parsedData = {}; allDates = [];
+      const colMap = [];
+      for (let c = 1; c < headers.length; c++) {
+        const header = String(headers[c] || '').trim();
+        if (!header) continue;
+        let tradeType = header.includes('進口') ? '進口' : '出口';
+        let rawHeader = header.replace(/.*(?:出口|進口)/, '').trim();
+        let parts = rawHeader.split(':');
+        let continent = parts[0].trim();
+        let country = parts[1] ? parts[1].trim() : '全洲總計';
+        colMap.push({ colIndex: c, continent, country, tradeType });
+        if (!parsedData[continent]) parsedData[continent] = {};
+        if (!parsedData[continent][country]) parsedData[continent][country] = { '出口': {}, '進口': {} };
+      }
+
+      for (let r = 1; r < rows.length; r++) {
+        const dateCell = rows[r][0];
+        if (!dateCell) continue;
+        let year, month;
+        if (typeof dateCell === 'number') {
+          const d = XLSX.SSF.parse_date_code(dateCell);
+          year = d.y; month = d.m;
+        } else {
+          const match = String(dateCell).trim().match(/(\d{4})[/-](\d{1,2})/);
+          if (match) { year = parseInt(match[1]); month = parseInt(match[2]); }
+        }
+        if (!year || !month) continue;
+        const dateKey = `${year}-${String(month).padStart(2, '0')}`;
+        if (!allDates.includes(dateKey)) allDates.push(dateKey);
+
+        colMap.forEach(item => {
+          const val = parseFloat(rows[r][item.colIndex]) || 0;
+          if (!parsedData[item.continent][item.country][item.tradeType][year]) {
+            parsedData[item.continent][item.country][item.tradeType][year] = {};
+          }
+          parsedData[item.continent][item.country][item.tradeType][year][month] = val;
+        });
+      }
+
+      allDates.sort();
+      const latestDateStr = allDates[allDates.length - 1];
+      [maxYear, maxMonth] = latestDateStr.split('-').map(Number);
+      document.getElementById('dataStatus').innerText = `已成功解析，最新月份：${maxYear} 年 ${maxMonth} 月`;
+      ['filterSection', 'kpiSection', 'chartSection'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+      initFilters();
+    }
+
+    function initFilters() {
+      const continentSelect = document.getElementById('continentSelect');
+      continentSelect.innerHTML = '';
+      Object.keys(parsedData).forEach(cont => {
+        const opt = document.createElement('option'); opt.value = cont; opt.innerText = cont;
+        continentSelect.appendChild(opt);
+      });
+      continentSelect.onchange = updateCountryOptions;
+      updateCountryOptions();
+    }
+
+    function updateCountryOptions() {
+      const continent = document.getElementById('continentSelect').value;
+      const countrySelect = document.getElementById('countrySelect');
+      countrySelect.innerHTML = '';
+      Object.keys(parsedData[continent] || {}).forEach(country => {
+        const opt = document.createElement('option'); opt.value = country; opt.innerText = country;
+        countrySelect.appendChild(opt);
+      });
+      countrySelect.onchange = () => { renderDashboard(); document.getElementById('aiSection').classList.add('hidden'); };
+      renderDashboard();
+    }
+
+    function calculateMetrics(continent, country, tradeType) {
+      const countryData = parsedData[continent][country] || {};
+      const targetData = countryData[tradeType] || {};
+      const priorYear = maxYear - 1;
+
+      const curMonthVal = (targetData[maxYear] && targetData[maxYear][maxMonth]) || 0;
+      const priorMonthVal = (targetData[priorYear] && targetData[priorYear][maxMonth]) || 0;
+      const monthYoY = priorMonthVal > 0 ? ((curMonthVal - priorMonthVal) / priorMonthVal) * 100 : null;
+
+      const qIndex = Math.ceil(maxMonth / 3);
+      const qStartMonth = (qIndex - 1) * 3 + 1;
+      let curQuarterVal = 0, priorQuarterVal = 0;
+      for (let m = qStartMonth; m <= maxMonth; m++) {
+        curQuarterVal += (targetData[maxYear] && targetData[maxYear][m]) || 0;
+        priorQuarterVal += (targetData[priorYear] && targetData[priorYear][m]) || 0;
+      }
+      const quarterYoY = priorQuarterVal > 0 ? ((curQuarterVal - priorQuarterVal) / priorQuarterVal) * 100 : null;
+
+      let curYtdVal = 0, priorYtdVal = 0;
+      for (let m = 1; m <= maxMonth; m++) {
+        curYtdVal += (targetData[maxYear] && targetData[maxYear][m]) || 0;
+        priorYtdVal += (targetData[priorYear] && targetData[priorYear][m]) || 0;
+      }
+      const ytdYoY = priorYtdVal > 0 ? ((curYtdVal - priorYtdVal) / priorYtdVal) * 100 : null;
+
+      return { month: { val: curMonthVal, yoy: monthYoY }, quarter: { val: curQuarterVal, yoy: quarterYoY, qIndex }, ytd: { val: curYtdVal, yoy: ytdYoY } };
+    }
+
+    function fmtNum(n) { return n === 0 ? "0.0" : n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+    function fmtYoY(badgeEl, yoy) {
+      if (yoy === null || isNaN(yoy)) { badgeEl.innerText = '無數據'; badgeEl.className = 'font-bold text-slate-400'; } 
+      else { badgeEl.innerText = `${yoy >= 0 ? '▲' : '▼'} ${Math.abs(yoy).toFixed(1)}%`; badgeEl.className = yoy >= 0 ? 'font-bold text-emerald-600' : 'font-bold text-rose-600'; }
+    }
+
+    function renderDashboard() {
+      const continent = document.getElementById('continentSelect').value;
+      const country = document.getElementById('countrySelect').value;
+      const m = calculateMetrics(continent, country, currentTradeType);
+
+      const tagClass = currentTradeType === '出口' ? 'bg-blue-100 text-blue-700' : 'bg-fuchsia-100 text-fuchsia-700';
+      ['monthTag', 'quarterTag', 'ytdTag'].forEach(id => {
+        document.getElementById(id).className = `text-xs px-2 py-0.5 rounded font-bold ${tagClass}`;
+        document.getElementById(id).innerText = currentTradeType;
+      });
+
+      document.getElementById('monthCardTitle').innerText = `${maxYear} 年 ${maxMonth} 月`;
+      document.getElementById('monthTotal').innerText = fmtNum(m.month.val); fmtYoY(document.getElementById('monthYoY'), m.month.yoy);
+
+      document.getElementById('quarterCardTitle').innerText = `${maxYear} Q${m.quarter.qIndex}`;
+      document.getElementById('quarterTotal').innerText = fmtNum(m.quarter.val); fmtYoY(document.getElementById('quarterYoY'), m.quarter.yoy);
+
+      document.getElementById('ytdCardTitle').innerText = `${maxYear} 年 1~${maxMonth} 月`;
+      document.getElementById('ytdTotal').innerText = fmtNum(m.ytd.val); fmtYoY(document.getElementById('ytdYoY'), m.ytd.yoy);
+
+      renderGrowthChart(country, m); renderContinentRankChart(continent);
+    }
+
+    function renderGrowthChart(country, metrics) {
+      const ctx = document.getElementById('growthComparisonChart').getContext('2d');
+      if (growthChartInstance) growthChartInstance.destroy();
+      const dataValues = [metrics.month.yoy || 0, metrics.quarter.yoy || 0, metrics.ytd.yoy || 0];
+      growthChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: ['單月動能', '季度動能', '年度累計'], datasets: [{ data: dataValues, backgroundColor: dataValues.map(v => v >= 0 ? '#10B981' : '#F43F5E'), borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => v + '%' } } } }
+      });
+    }
+
+    function renderContinentRankChart(continent) {
+      const ctx = document.getElementById('continentCountriesChart').getContext('2d');
+      if (continentChartInstance) continentChartInstance.destroy();
+      const countries = Object.keys(parsedData[continent] || {}).filter(c => c !== '全洲總計');
+      const countryList = countries.map(c => { return { name: c, yoy: calculateMetrics(continent, c, currentTradeType).month.yoy || 0 }; }).sort((a, b) => b.yoy - a.yoy);
+      document.getElementById('continentOverviewChartTitle').innerText = `${continent}各國 ${currentTradeType} 成長率排名 (最新單月)`;
+      continentChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: countryList.map(c => c.name), datasets: [{ data: countryList.map(c => c.yoy), backgroundColor: currentTradeType === '出口' ? '#3B82F6' : '#D946EF', borderRadius: 4 }] },
+        options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { callback: v => v + '%' } } } }
+      });
+    }
+
+    async function generateAIAnalysis() {
+      // 從輸入框取得 API Key
+      const apiKey = document.getElementById('geminiApiKey').value.trim();
+      if (!apiKey) {
+        alert("請先在畫面上方輸入您的 Gemini API Key！");
+        return;
+      }
+
+      const continent = document.getElementById('continentSelect').value;
+      const country = document.getElementById('countrySelect').value;
+      const metrics = calculateMetrics(continent, country, currentTradeType);
+
+      if(metrics.ytd.val === 0) {
+        alert("該地區目前無數據可供分析。");
+        return;
+      }
+
+      const prompt = `
+        你是一位專業的國際貿易與總體經濟分析師。
+        請根據以下提供的「中國對 ${country} (${continent})」的最新${currentTradeType}貿易數據，撰寫一份簡要的分析報告。
+        
+        【數據概況】
+        - 基準時間：${maxYear} 年 ${maxMonth} 月
+        - 當月${currentTradeType}額：${fmtNum(metrics.month.val)} 百萬美元 (YoY: ${metrics.month.yoy ? metrics.month.yoy.toFixed(1) + '%' : '無同期數據'})
+        - 當季${currentTradeType}額：${fmtNum(metrics.quarter.val)} 百萬美元 (YoY: ${metrics.quarter.yoy ? metrics.quarter.yoy.toFixed(1) + '%' : '無'})
+        - 年度累計${currentTradeType}額：${fmtNum(metrics.ytd.val)} 百萬美元 (YoY: ${metrics.ytd.yoy ? metrics.ytd.yoy.toFixed(1) + '%' : '無'})
+        
+        【任務要求】
+        1. 首先，給予一段綜合性的解釋（嚴格控制在 200 字左右），說明目前該國${currentTradeType}的動能與趨勢。
+        2. 接著，列出「最主要影響該國進出口變化的三點可能原因」。請根據該國/該洲的宏觀經濟特性、地緣政治、國際原物料價格或中國近期的產業政策，給出合理的經濟學推論。
+        3. 請使用繁體中文，格式清晰（使用 Markdown 標題與條列式）。
+      `;
+
+      const aiSection = document.getElementById('aiSection');
+      const aiLoading = document.getElementById('aiLoading');
+      const aiContent = document.getElementById('aiContent');
+      
+      aiSection.classList.remove('hidden');
+      aiLoading.classList.remove('hidden');
+      aiContent.innerHTML = '';
+      
+      try {
+        // 使用 gemini-2.5-flash
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.3 }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API 請求失敗: ${response.status} (請確認您的金鑰正確無誤)`);
+        }
+
+        const result = await response.json();
+        const aiText = result.candidates[0].content.parts[0].text;
+        
+        aiContent.innerHTML = marked.parse(aiText);
+      } catch (error) {
+        aiContent.innerHTML = `<span class="text-rose-600 font-bold">生成分析報告時發生錯誤：</span><br>${error.message}`;
+      } finally {
+        aiLoading.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
