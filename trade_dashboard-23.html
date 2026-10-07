@@ -1,0 +1,874 @@
+<!DOCTYPE 下午 04:19 2026/10/6html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>中國進出口貿易數據監控面板 (無地圖穩定版)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 p-6 min-h-screen">
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- 頂部標題與檔案上傳區 -->
+    <header class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">中國對外貿易監控儀表板 <span class="text-sm font-normal text-emerald-600 bg-emerald-100 px-2 py-1 rounded">✦ v23版</span></h1>
+        <p class="text-sm font-medium text-slate-500 mt-1" id="dataStatus">請上傳您的貿易 Excel 報表以開始分析</p>
+      </div>
+    <div class="flex items-center gap-3">
+        <!-- 改為一鍵同步雲端按鈕 -->
+        <button id="btnLoadCloud" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-5 rounded-lg shadow transition flex items-center gap-2">
+          <span>☁️ 同步 CLOUD 數據</span>
+        </button>
+      </div>
+    </header>
+
+<!-- 📈 新增：全球總進出口逐月趨勢折線圖 (全寬) -->
+    <div id="trendSection" class="hidden mb-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex flex-wrap justify-between items-start mb-4 gap-2">
+          <h2 id="trendChartTitle" class="text-base font-bold text-slate-800">中國進出口貿易總體趨勢</h2>
+          <!-- 折線圖指標切換選單 -->
+          <select id="trendMetricSelect" onchange="renderGlobalTrendChart()" class="border border-slate-300 rounded-md p-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+            <option value="all">全部顯示</option>
+            <option value="total">貿易總額</option>
+            <option value="export">出口金額</option>
+            <option value="import">進口金額</option>
+            <option value="balance">貿易差額 (出-進)</option>
+          </select>
+        </div>
+        <div class="w-full h-80">
+          <canvas id="globalTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 控制選單 -->
+    <div id="filterSection" class="hidden bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-6 items-center">
+      <div class="flex items-center gap-3 border-r border-slate-200 pr-6">
+        <label class="font-semibold text-slate-700">指標切換：</label>
+        <div class="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
+          <button id="btnExport" class="px-4 py-1.5 rounded-md text-sm font-bold bg-white shadow-sm text-blue-600 transition-all">出口</button>
+          <button id="btnImport" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-all">進口</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="font-semibold text-slate-700">選擇洲別：</label>
+        <select id="continentSelect" class="border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="font-semibold text-slate-700">特定國家/地區：</label>
+        <select id="countrySelect" class="border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+      </div>
+      <div class="ml-auto text-sm font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200" id="dateBadge">
+        更新年月：-
+      </div>
+    </div>
+
+    <!-- 核心數據卡片區 -->
+    <div id="kpiSection" class="hidden grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" id="monthCardTitle">最新月份</span>
+          <span class="text-xs px-2 py-0.5 rounded font-bold monthTag">單月</span>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900" id="monthTotal">-</div>
+        <div class="text-xs text-slate-400 mt-1 mb-3">單位：億美元</div>
+        <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-sm">
+          <span class="text-slate-500">較去年同期 YoY</span>
+          <span id="monthYoY" class="font-bold">-</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" id="quarterCardTitle">最新一季</span>
+          <span class="text-xs px-2 py-0.5 rounded font-bold quarterTag">季度</span>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900" id="quarterTotal">-</div>
+        <div class="text-xs text-slate-400 mt-1 mb-3">單位：億美元</div>
+        <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-sm">
+          <span class="text-slate-500">較去年同期 YoY</span>
+          <span id="quarterYoY" class="font-bold">-</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" id="ytdCardTitle">年度累計 (YTD)</span>
+          <span class="text-xs px-2 py-0.5 rounded font-bold ytdTag">累計</span>
+        </div>
+        <div class="text-3xl font-extrabold text-slate-900" id="ytdTotal">-</div>
+        <div class="text-xs text-slate-400 mt-1 mb-3">單位：億美元</div>
+        <div class="border-t border-slate-100 pt-3 flex justify-between items-center text-sm">
+          <span class="text-slate-500">較去年同期 YoY</span>
+          <span id="ytdYoY" class="font-bold">-</span>
+        </div>
+      </div>
+    </div>
+
+
+
+<!-- 🌐 新增：世界地圖區 (全寬) -->
+    <div id="mapSection" class="hidden">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex flex-wrap justify-between items-start mb-4 gap-2">
+          <h2 class="text-base font-bold text-slate-800" id="worldMapTitle">中國對全球貿易分布圖 <span class="text-xs font-normal text-slate-500 ml-2">(游標懸停可查看詳細金額與變動率)</span></h2>
+          <div class="flex items-center gap-2">
+            <span class="text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 hidden sm:inline-block">深淺代表金額多寡</span>
+            <!-- 地圖週期切換選單 -->
+            <select id="mapPeriodSelect" onchange="renderWorldMap()" class="border border-slate-300 rounded-md p-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+              <option value="ytd">年度累計 (YTD)</option>
+              <option value="quarter">最新一季</option>
+              <option value="month">最新單月</option>
+            </select>
+          </div>
+        </div>
+        <!-- 地圖容器 -->
+        <div id="worldMapChart" class="w-full rounded border border-slate-100 bg-blue-50/30" style="height: 450px;"></div>
+      </div>
+    </div>
+
+<!-- 全球 Top 10 排行區 (全寬) -->
+    <div id="globalSection" class="hidden">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex flex-wrap justify-between items-start mb-4 gap-2">
+          <h2 class="text-base font-bold text-slate-800" id="top10Title">全球前十大國家與特定經濟體對比</h2>
+          <!-- 新增：週期切換選單 -->
+          <select id="top10PeriodSelect" onchange="refreshTop10Chart()" class="border border-slate-300 rounded-md p-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+            <option value="ytd">年度累計 (YTD)</option>
+            <option value="quarter">最新一季</option>
+            <option value="month">最新單月</option>
+          </select>
+        </div>
+        <div class="w-full h-80">
+          <canvas id="top10Chart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 動能圖表 -->
+    <div id="chartSection" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-base font-bold text-slate-800 mb-4" id="targetGrowthChartTitle">成長率動能對比</h2>
+        <div class="h-64"><canvas id="growthComparisonChart"></canvas></div>
+      </div>
+<!-- 右下角：動態排名圖表區塊 -->
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col" style="max-height: 450px;">
+        <div class="flex flex-wrap justify-between items-start mb-4 gap-2">
+          <h2 class="text-base font-bold text-slate-800" id="continentOverviewChartTitle">各國排名</h2>
+          <div class="flex gap-2">
+            <!-- 週期切換選單 -->
+            <select id="rankPeriodSelect" onchange="renderContinentRankChart(document.getElementById('continentSelect').value)" class="border border-slate-300 rounded-md p-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+              <option value="month">最新單月</option>
+              <option value="quarter">最新一季</option>
+              <option value="ytd">年度累計 (YTD)</option>
+            </select>
+            <!-- 指標切換選單 -->
+            <select id="rankMetricSelect" onchange="renderContinentRankChart(document.getElementById('continentSelect').value)" class="border border-slate-300 rounded-md p-1.5 text-xs font-medium text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer">
+              <option value="yoy">變動率 (%)</option>
+              <option value="val">金額 (億美元)</option>
+            </select>
+          </div>
+        </div>
+        <div id="continentChartContainer" class="w-full flex-grow overflow-y-auto">
+          <canvas id="continentCountriesChart"></canvas>
+        </div>
+      </div>
+  </div>
+
+  <script>
+    let parsedData = {}; 
+    let allDates = []; 
+    let maxYear = 0, maxMonth = 0;
+    let growthChartInstance = null;
+    let continentChartInstance = null;
+    let top10ChartInstance = null;
+    let mapInstance = null;
+    let trendChartInstance = null;
+    let currentTradeType = '出口';
+
+    // 綁定事件
+    document.getElementById('btnExport').addEventListener('click', () => setTradeType('出口'));
+    document.getElementById('btnImport').addEventListener('click', () => setTradeType('進口'));
+    window.addEventListener('resize', () => { if(mapInstance) mapInstance.resize(); });
+
+    function setTradeType(type) {
+      currentTradeType = type;
+      const btnExport = document.getElementById('btnExport');
+      const btnImport = document.getElementById('btnImport');
+      const activeClass = "px-4 py-1.5 rounded-md text-sm font-bold bg-white shadow-sm text-blue-600 transition-all";
+      const inactiveClass = "px-4 py-1.5 rounded-md text-sm font-medium text-slate-500 hover:text-slate-700 transition-all";
+      btnExport.className = type === '出口' ? activeClass : inactiveClass;
+      btnImport.className = type === '進口' ? activeClass : inactiveClass;
+      
+      if(Object.keys(parsedData).length > 0) renderDashboard();
+    }
+
+    // 解析 Excel
+
+// 💡 請將引號內替換成您剛剛在步驟 2 拿到的「網頁應用程式網址」
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbxmAgY5-N1qgbhTvJ4sduEmKvKaEM82MubqQGkbXvJsVsOYXhCQW0eWf6HEY4wOuyWs7Q/exec"; 
+
+    // 綁定新的雲端同步按鈕
+    document.getElementById('btnLoadCloud').addEventListener('click', fetchCloudExcel);
+
+    async function fetchCloudExcel() {
+      const statusEl = document.getElementById('dataStatus');
+      statusEl.innerText = "☁️ 正在透過專屬 API 下載最新數據...";
+      statusEl.className = "text-sm font-medium text-blue-600 mt-1";
+      
+      try {
+        const response = await fetch(GAS_URL);
+        if (!response.ok) throw new Error(`網路請求失敗，狀態碼: ${response.status}`);
+        
+        // 1. 取得從 Google Script 傳來的 Base64 文字檔
+        const base64Data = await response.text();
+        
+        // 捕捉權限設定錯誤
+        if (base64Data.startsWith("Error:")) {
+            throw new Error(base64Data);
+        }
+        
+        // 2. 將 Base64 解碼還原成 Excel 的二進位陣列
+        const binaryString = atob(base64Data);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // 3. 餵給 XLSX 解析，後面的處理邏輯完全一樣！
+        const workbook = XLSX.read(bytes, { type: 'array' });
+        
+        if(!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            throw new Error("無法讀取工作表，請確認 Excel 是否空白。");
+        }
+
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawJson = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+        
+        processTradeData(rawJson);
+        
+      } catch(error) {
+        console.error(error);
+        alert("從 API 載入資料失敗！\n\n錯誤詳情: " + error.message);
+        statusEl.innerText = "❌ 雲端同步失敗";
+        statusEl.className = "text-sm font-medium text-rose-600 mt-1";
+      }
+    }
+    // (選用) 如果希望網頁一打開就自動載入，可以把下面這行取消註解
+    // window.onload = fetchCloudExcel;
+
+function processTradeData(rows) {
+      const statusEl = document.getElementById('dataStatus');
+      if (rows.length < 2) {
+          alert("⚠️ 無法解析：資料列不足。");
+          statusEl.innerText = "❌ 解析失敗：資料列不足";
+          return;
+      }
+      
+      try {
+          const headers = rows[0];
+          parsedData = {}; allDates = [];
+          const colMap = [];
+          
+          for (let c = 1; c < headers.length; c++) {
+            const header = String(headers[c] || '').trim();
+            if (!header) continue;
+            let tradeType = header.includes('進口') ? '進口' : '出口';
+            let rawHeader = header.replace(/.*(?:出口|進口)/, '').trim();
+            let parts = rawHeader.split(':');
+            let continent = parts[0].trim();
+            let country = parts[1] ? parts[1].trim() : '全洲總計';
+            
+            colMap.push({ colIndex: c, continent, country, tradeType });
+            if (!parsedData[continent]) parsedData[continent] = {};
+            if (!parsedData[continent][country]) parsedData[continent][country] = { '出口': {}, '進口': {} };
+          }
+
+          let validRowCount = 0;
+          for (let r = 1; r < rows.length; r++) {
+            const dateCell = rows[r][0];
+            if (!dateCell) continue;
+            
+            let year, month;
+            if (typeof dateCell === 'number') {
+              const d = XLSX.SSF.parse_date_code(dateCell);
+              if(d) { year = d.y; month = d.m; }
+            } else {
+              const match = String(dateCell).trim().match(/(\d{4})[/-](\d{1,2})/);
+              if (match) { year = parseInt(match[1]); month = parseInt(match[2]); }
+            }
+            if (!year || !month) continue; 
+            validRowCount++;
+            
+            const dateKey = `${year}-${String(month).padStart(2, '0')}`;
+            if (!allDates.includes(dateKey)) allDates.push(dateKey);
+
+            colMap.forEach(item => {
+              // 🌟 核心修改：除以 100 轉換為億美元
+              const val = (parseFloat(rows[r][item.colIndex]) || 0) / 100;
+              if (!parsedData[item.continent][item.country][item.tradeType][year]) {
+                parsedData[item.continent][item.country][item.tradeType][year] = {};
+              }
+              parsedData[item.continent][item.country][item.tradeType][year][month] = val;
+            });
+          }
+
+          if (validRowCount === 0 || allDates.length === 0) {
+              alert("⚠️ 找不到時間欄位！請確定第一欄是日期格式。");
+              statusEl.innerText = "❌ 解析失敗";
+              return;
+          }
+
+          allDates.sort();
+          const latestDateStr = allDates[allDates.length - 1];
+          [maxYear, maxMonth] = latestDateStr.split('-').map(Number);
+          
+          statusEl.innerText = `✅ 解析成功！基準月為 ${maxYear} 年 ${maxMonth} 月`;
+          statusEl.className = "text-sm font-medium text-emerald-600 mt-1";
+          document.getElementById('dateBadge').innerText = `基準時間：${maxYear}/${maxMonth}`;
+          
+          ['filterSection', 'trendSection', 'mapSection', 'globalSection', 'kpiSection', 'chartSection'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.classList.remove('hidden');
+          });
+          
+          initFilters();
+
+      } catch(err) {
+          alert("處理數據發生錯誤: " + err.message);
+      }
+    }
+
+    function initFilters() {
+      const continentSelect = document.getElementById('continentSelect');
+      continentSelect.innerHTML = '';
+      Object.keys(parsedData).forEach(cont => {
+        const opt = document.createElement('option'); opt.value = cont; opt.innerText = cont;
+        continentSelect.appendChild(opt);
+      });
+      continentSelect.onchange = updateCountryOptions;
+      updateCountryOptions();
+    }
+
+    function updateCountryOptions() {
+      const continent = document.getElementById('continentSelect').value;
+      const countrySelect = document.getElementById('countrySelect');
+      countrySelect.innerHTML = '';
+      Object.keys(parsedData[continent] || {}).forEach(country => {
+        const opt = document.createElement('option');
+        opt.value = country;
+        // 🌟 判斷：如果是全洲總計，選單只顯示「總計」
+        opt.innerText = country === '全洲總計' ? '總計' : country; 
+        countrySelect.appendChild(opt);
+      });
+      countrySelect.onchange = renderDashboard;
+      renderDashboard();
+    }    
+
+    // 計算邏輯
+    function calculateMetrics(continent, country, tradeType) {
+      const countryData = parsedData[continent][country] || {};
+      const targetData = countryData[tradeType] || {};
+      const priorYear = maxYear - 1;
+
+      const curMonthVal = (targetData[maxYear] && targetData[maxYear][maxMonth]) || 0;
+      const priorMonthVal = (targetData[priorYear] && targetData[priorYear][maxMonth]) || 0;
+      const monthYoY = priorMonthVal > 0 ? ((curMonthVal - priorMonthVal) / priorMonthVal) * 100 : null;
+
+      const qIndex = Math.ceil(maxMonth / 3);
+      const qStartMonth = (qIndex - 1) * 3 + 1;
+      let curQuarterVal = 0, priorQuarterVal = 0;
+      for (let m = qStartMonth; m <= maxMonth; m++) {
+        curQuarterVal += (targetData[maxYear] && targetData[maxYear][m]) || 0;
+        priorQuarterVal += (targetData[priorYear] && targetData[priorYear][m]) || 0;
+      }
+      const quarterYoY = priorQuarterVal > 0 ? ((curQuarterVal - priorQuarterVal) / priorQuarterVal) * 100 : null;
+
+      let curYtdVal = 0, priorYtdVal = 0;
+      for (let m = 1; m <= maxMonth; m++) {
+        curYtdVal += (targetData[maxYear] && targetData[maxYear][m]) || 0;
+        priorYtdVal += (targetData[priorYear] && targetData[priorYear][m]) || 0;
+      }
+      const ytdYoY = priorYtdVal > 0 ? ((curYtdVal - priorYtdVal) / priorYtdVal) * 100 : null;
+
+      return { month: { val: curMonthVal, yoy: monthYoY }, quarter: { val: curQuarterVal, yoy: quarterYoY, qIndex }, ytd: { val: curYtdVal, yoy: ytdYoY } };
+    }
+
+    function fmtNum(n) { return n === 0 ? "0.0" : n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+    function fmtYoY(badgeEl, yoy) {
+      if (yoy === null || isNaN(yoy)) { badgeEl.innerText = '無數據'; badgeEl.className = 'font-bold text-slate-400'; } 
+      else { badgeEl.innerText = `${yoy >= 0 ? '▲' : '▼'} ${Math.abs(yoy).toFixed(1)}%`; badgeEl.className = yoy >= 0 ? 'font-bold text-emerald-600' : 'font-bold text-rose-600'; }
+    }
+
+function renderDashboard() {
+      const continent = document.getElementById('continentSelect').value;
+      const country = document.getElementById('countrySelect').value;
+      const m = calculateMetrics(continent, country, currentTradeType);
+
+      const tagClass = currentTradeType === '出口' ? 'bg-blue-100 text-blue-700' : 'bg-fuchsia-100 text-fuchsia-700';
+      document.querySelectorAll('.monthTag, .quarterTag, .ytdTag').forEach(el => {
+        el.className = `text-xs px-2 py-0.5 rounded font-bold ${tagClass} ${el.className.includes('monthTag')?'monthTag':el.className.includes('quarterTag')?'quarterTag':'ytdTag'}`;
+        el.innerText = currentTradeType;
+      });
+
+      document.getElementById('monthCardTitle').innerText = `${maxYear} 年 ${maxMonth} 月`;
+      document.getElementById('monthTotal').innerText = fmtNum(m.month.val); fmtYoY(document.getElementById('monthYoY'), m.month.yoy);
+      document.getElementById('quarterCardTitle').innerText = `${maxYear} Q${m.quarter.qIndex}`;
+      document.getElementById('quarterTotal').innerText = fmtNum(m.quarter.val); fmtYoY(document.getElementById('quarterYoY'), m.quarter.yoy);
+      document.getElementById('ytdCardTitle').innerText = `${maxYear} 年 1~${maxMonth} 月`;
+      document.getElementById('ytdTotal').innerText = fmtNum(m.ytd.val); fmtYoY(document.getElementById('ytdYoY'), m.ytd.yoy);
+
+      // 🌟 這裡補上傳遞 continent 給動能圖，用以顯示洲名
+      renderGrowthChart(continent, country, m); 
+      renderContinentRankChart(continent);
+      
+      refreshTop10Chart();
+      renderWorldMap();
+      renderGlobalTrendChart();
+    }
+
+function getAllCountriesMetrics() {
+        let list = [];
+        let seenCountries = new Set(); 
+        
+        // 特殊經濟體清單
+        const specialBlocs = ['EU', 'ASEAN', 'Africa'];
+
+        for (let cont in parsedData) {
+            for (let ctry in parsedData[cont]) {
+                if (ctry === '全洲總計') {
+                    if (specialBlocs.includes(cont)) {
+                        let m = calculateMetrics(cont, ctry, currentTradeType);
+                        if (m.ytd.val > 0 || m.month.val > 0) {
+                            // 新增 isBloc 標記，用來區分它是不是經濟體
+                            list.push({ continent: cont, name: `*${cont}`, metrics: m, isBloc: true });
+                        }
+                    }
+                } 
+                else {
+                    if (!seenCountries.has(ctry)) {
+                        let m = calculateMetrics(cont, ctry, currentTradeType);
+                        if (m.ytd.val > 0 || m.month.val > 0) {
+                            list.push({ continent: cont, name: ctry, metrics: m, isBloc: false });
+                            seenCountries.add(ctry); 
+                        }
+                    }
+                }
+            }
+        }
+        return list;
+    }
+
+
+
+function refreshTop10Chart() {
+        const allData = getAllCountriesMetrics();
+        const ctx = document.getElementById('top10Chart').getContext('2d');
+        if (top10ChartInstance) top10ChartInstance.destroy();
+
+        const periodSelect = document.getElementById('top10PeriodSelect');
+        const period = periodSelect ? periodSelect.value : 'ytd';
+
+        const countries = allData.filter(d => !d.isBloc);
+        const blocs = allData.filter(d => d.isBloc);
+
+        countries.sort((a, b) => b.metrics[period].val - a.metrics[period].val);
+        const top10Countries = countries.slice(0, 10);
+
+        let combinedData = [...top10Countries, ...blocs];
+        combinedData.sort((a, b) => b.metrics[period].val - a.metrics[period].val);
+
+        const periodText = period === 'month' ? '最新單月' : (period === 'quarter' ? '最新一季' : '1~' + maxMonth + '月 YTD');
+        document.getElementById('top10Title').innerHTML = `前十大${currentTradeType}對象與特定經濟體對比 (${periodText}) <span class="text-xs font-normal text-slate-500 ml-2">(*深色標示為經濟體)</span>`;
+
+        top10ChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: { 
+                labels: combinedData.map(d => d.name), 
+                datasets: [{ 
+                    label: '金額', 
+                    data: combinedData.map(d => d.metrics[period].val), 
+                    backgroundColor: combinedData.map(d => {
+                        if (d.isBloc) return currentTradeType === '出口' ? '#1D4ED8' : '#A21CAF'; 
+                        return currentTradeType === '出口' ? '#60A5FA' : '#C084FC'; 
+                    }), 
+                    borderRadius: 4 
+                }] 
+            },
+            options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex; 
+                                const yoy = combinedData[idx].metrics[period].yoy;
+                                const valStr = fmtNum(context.raw) + ' 億美元'; // 🌟 更新為億美元
+                                const yoyStr = (yoy === null || isNaN(yoy)) ? '無數據' : (yoy > 0 ? `+${yoy.toFixed(1)}%` : `${yoy.toFixed(1)}%`);
+                                return [`金額: ${valStr}`, `變動率: ${yoyStr}`];
+                            }
+                        }
+                    }
+                },
+                // 🌟 修正 X 軸，直接使用千分位逗點
+                scales: { x: { ticks: { callback: v => v.toLocaleString() } } }
+            }
+        });
+    }
+
+function renderGrowthChart(continent, country, metrics) {
+      const ctx = document.getElementById('growthComparisonChart').getContext('2d');
+      if (growthChartInstance) growthChartInstance.destroy();
+      const dataValues = [metrics.month.yoy || 0, metrics.quarter.yoy || 0, metrics.ytd.yoy || 0];
+      
+      // 🌟 判斷：如果是全洲總計，標題改為「洲名+總計」 (例如: Latin America總計 成長動能對比)
+      const displayName = country === '全洲總計' ? `${continent}總計` : country;
+      document.getElementById('targetGrowthChartTitle').innerText = `${displayName} 成長動能對比`;
+
+      growthChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: ['單月動能', '季度動能', '年度累計'], datasets: [{ data: dataValues, backgroundColor: dataValues.map(v => v >= 0 ? '#10B981' : '#F43F5E'), borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(context) { return `變動率: ${Number(context.raw).toFixed(1)}%`; } } } }, scales: { y: { ticks: { callback: v => v + '%' } } } }
+      });
+    }
+
+function renderContinentRankChart(continent) {
+      const ctx = document.getElementById('continentCountriesChart').getContext('2d');
+      if (continentChartInstance) continentChartInstance.destroy();
+      
+      const periodSelect = document.getElementById('rankPeriodSelect');
+      const metricSelect = document.getElementById('rankMetricSelect');
+      const period = periodSelect ? periodSelect.value : 'month';
+      const metric = metricSelect ? metricSelect.value : 'yoy';
+
+      const countries = Object.keys(parsedData[continent] || {}).filter(c => c !== '全洲總計');
+      
+      let countryList = countries.map(c => { 
+          const m = calculateMetrics(continent, c, currentTradeType);
+          let rawValue = m[period][metric];
+          if (rawValue === null || isNaN(rawValue)) rawValue = 0; 
+          return { name: c, value: rawValue }; 
+      });
+
+      countryList.sort((a, b) => b.value - a.value);
+      countryList = countryList.slice(0, 10);
+      
+      const periodText = period === 'month' ? '最新單月' : (period === 'quarter' ? '最新一季' : '年度累計');
+      const metricText = metric === 'yoy' ? '變動率' : '金額';
+      
+      const directionText = currentTradeType === '出口' ? `至${continent}出口` : `自${continent}進口`;
+      document.getElementById('continentOverviewChartTitle').innerText = `${directionText}${metricText} 前十名\n(${periodText})`;
+      
+      const container = document.getElementById('continentChartContainer');
+      const rowHeight = 35; 
+      container.style.height = Math.max(250, countryList.length * rowHeight) + 'px';
+      
+      continentChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: countryList.map(c => c.name), datasets: [{ data: countryList.map(c => c.value), backgroundColor: currentTradeType === '出口' ? '#3B82F6' : '#D946EF', borderRadius: 4 }] },
+        options: { 
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false, 
+            plugins: { 
+                legend: { display: false }, 
+                tooltip: { 
+                    callbacks: { 
+                        label: function(context) { 
+                            if (metric === 'yoy') return `變動率: ${Number(context.raw).toFixed(1)}%`;
+                            return `金額: ${Number(context.raw).toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} 億美元`; // 🌟 更新為億美元
+                        } 
+                    } 
+                } 
+            }, 
+            scales: { 
+                // 🌟 修正 X 軸：如果是變動率就加 %，否則直接用千分位逗點
+                x: { ticks: { callback: function(v) { if (metric === 'yoy') return v + '%'; return v.toLocaleString(); } } },
+                y: { ticks: { autoSkip: false } } 
+            } 
+        }
+      });
+    }
+
+// 💡 國名轉換字典 (確保 Excel 國名能對應到地圖)
+    const countryNameMap = {
+        "Democratic Republic of Congo": "Dem. Rep. Congo",
+        "USA": "United States",
+        "United States of America": "United States",
+        "UK": "United Kingdom",
+        "Russian Federation": "Russia",
+        "South Korea": "Korea",
+        "Ivory Coast": "Côte d'Ivoire",
+        "Central African Republic": "Central African Rep.",
+        "Equatorial Guinea": "Eq. Guinea",
+        "South Sudan": "S. Sudan",
+        "Swaziland": "eSwatini",
+        "Dominican Republic": "Dominican Rep."
+    };
+    function getStandardizedName(excelName) { return countryNameMap[excelName] || excelName; }
+
+// 💡 新增：特殊地區的經緯度座標 (用發光圓點獨立標示)
+    const dotCoords = {
+        "Taiwan": [120.96, 23.69],
+        "Hong Kong SAR (China)": [114.16, 22.28],
+        "Macao SAR (China)": [113.54, 22.19],
+        "Singapore": [103.81, 1.35]
+    };
+
+// 🌐 世界地圖渲染 (支援週期切換、發光圓點與【點擊連動功能】)
+function renderWorldMap() {
+        const chartDom = document.getElementById('worldMapChart');
+        if(!chartDom) return;
+        
+        if (!echarts.getMap('world')) {
+            chartDom.innerHTML = `<div class="flex h-full w-full items-center justify-center text-slate-500 text-sm">⚠️ 無法讀取地圖圖資，請確認網路環境。</div>`;
+            return;
+        }
+
+        if (!mapInstance) {
+            mapInstance = echarts.init(chartDom);
+        }
+
+        const periodSelect = document.getElementById('mapPeriodSelect');
+        const period = periodSelect ? periodSelect.value : 'ytd';
+
+        const allData = getAllCountriesMetrics();
+        
+        let mapData = [];
+        let scatterData = [];
+
+        allData.filter(d => !d.isBloc).forEach(d => {
+            const mData = d.metrics[period];
+            const stdName = getStandardizedName(d.name);
+            
+            const dataObj = { 
+                name: stdName, 
+                originalName: d.name,
+                continent: d.continent, 
+                value: mData.val, 
+                yoy: mData.yoy
+            };
+
+            mapData.push(dataObj);
+
+            if (dotCoords[stdName]) {
+                scatterData.push({
+                    name: stdName,
+                    originalName: d.name,
+                    continent: d.continent, 
+                    value: [dotCoords[stdName][0], dotCoords[stdName][1], mData.val],
+                    yoy: mData.yoy
+                });
+            }
+        });
+
+        const colorStart = currentTradeType === '出口' ? '#DBEAFE' : '#FAE8FF';
+        const colorEnd = currentTradeType === '出口' ? '#1D4ED8' : '#A21CAF';
+        const maxVal = Math.max(...mapData.map(d => d.value), 100);
+        
+        const periodText = period === 'month' ? '最新單月' : (period === 'quarter' ? '最新一季' : 'YTD');
+
+        const option = {
+            tooltip: {
+                trigger: 'item', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderColor: '#e2e8f0', textStyle: { color: '#1e293b' }, padding: 12,
+                formatter: function (params) {
+                    const displayName = (params.data && params.data.originalName) ? params.data.originalName : params.name;
+                    if (!params.data) return `<div class="font-bold border-b border-slate-200 pb-1 mb-1">${displayName}</div>沒有 ${currentTradeType} 數據`;
+                    
+                    const rawVal = params.seriesType === 'effectScatter' ? params.data.value[2] : params.data.value;
+                    const valStr = fmtNum(rawVal);
+                    
+                    const yoy = params.data.yoy;
+                    const yoyStr = (yoy === null || isNaN(yoy)) ? '無數據' : (yoy > 0 ? `+${yoy.toFixed(1)}%` : `${yoy.toFixed(1)}%`);
+                    const yoyColor = yoy > 0 ? 'text-emerald-600' : (yoy < 0 ? 'text-rose-600' : 'text-slate-600');
+
+                    return `
+                        <div class="font-bold text-base border-b border-slate-200 pb-1 mb-2">${displayName}</div>
+                        <div class="text-sm space-y-1">
+                            <div class="flex justify-between gap-6">
+                                <span class="text-slate-500">週期金額 (${periodText}):</span> 
+                                <span><b class="text-slate-800">${valStr}</b> <span class="text-xs">億美元</span></span>
+                            </div>
+                            <div class="flex justify-between gap-6">
+                                <span class="text-slate-500">成長率 (YoY):</span> 
+                                <span class="${yoyColor} font-bold">${yoyStr}</span>
+                            </div>
+                            <div class="mt-2 text-xs text-blue-500 border-t border-slate-100 pt-1">👆 點擊可切換至該國詳細數據</div>
+                        </div>`;
+                }
+            },
+            visualMap: { 
+                left: 'right', top: 'bottom', min: 0, max: maxVal, 
+                inRange: { color: [colorStart, colorEnd] }, 
+                text: ['高', '低'], calculable: true, itemWidth: 15,
+                seriesIndex: 0 
+            },
+            geo: {
+                map: 'world', roam: true, scaleLimit: { min: 1, max: 8 },
+                itemStyle: { borderColor: '#cbd5e1', areaColor: '#f1f5f9' },
+                emphasis: { itemStyle: { areaColor: '#fcd34d' }, label: { show: false } }
+            },
+            series: [
+                { name: '世界地圖', type: 'map', geoIndex: 0, data: mapData },
+                {
+                    name: '獨立實體標示', type: 'effectScatter', coordinateSystem: 'geo', symbolSize: 12, 
+                    itemStyle: { color: '#F59E0B', borderColor: '#ffffff', borderWidth: 1.5, shadowBlur: 10, shadowColor: 'rgba(245, 158, 11, 0.5)' },
+                    data: scatterData 
+                }
+            ]
+        };
+        mapInstance.setOption(option);
+
+        mapInstance.off('click');
+        mapInstance.on('click', function (params) {
+            if (params.data && params.data.originalName && params.data.continent) {
+                const targetContinent = params.data.continent;
+                const targetCountry = params.data.originalName;
+
+                document.getElementById('continentSelect').value = targetContinent;
+
+                const countrySelect = document.getElementById('countrySelect');
+                countrySelect.innerHTML = '';
+                Object.keys(parsedData[targetContinent] || {}).forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    // 🌟 點擊地圖時重建選單，也要確保顯示「總計」
+                    opt.innerText = c === '全洲總計' ? '總計' : c; 
+                    countrySelect.appendChild(opt);
+                });
+
+                countrySelect.value = targetCountry;
+                renderDashboard();
+                document.getElementById('filterSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    }
+
+
+// 📈 中國進出口貿易總體趨勢 (自動動態年份、動態標題、僅計算最新年 YoY)
+    function renderGlobalTrendChart() {
+        const ctx = document.getElementById('globalTrendChart').getContext('2d');
+        if (trendChartInstance) trendChartInstance.destroy();
+
+        const metric = document.getElementById('trendMetricSelect').value;
+
+        // 🌟 自動計算動態年份 (例如資料到 2026，這裡就會自動抽出 2026 與 2025)
+        const prevYear = maxYear - 1;
+
+        // 🌟 自動更新 HTML 上的標題文字
+        const titleEl = document.getElementById('trendChartTitle');
+        if (titleEl) {
+            titleEl.innerText = `中國進出口貿易總體趨勢 (${prevYear} vs ${maxYear})`;
+        }
+
+        const getGlobalMonthlyData = (year, type) => {
+            let monthly = Array(12).fill(0);
+            for (let cont in parsedData) {
+                if (parsedData[cont]['全洲總計'] && parsedData[cont]['全洲總計'][type] && parsedData[cont]['全洲總計'][type][year]) {
+                    for (let m = 1; m <= 12; m++) {
+                        monthly[m - 1] += parsedData[cont]['全洲總計'][type][year][m] || 0;
+                    }
+                }
+            }
+            // 如果某年全沒數據就當作 null
+            if (monthly.every(v => v === 0)) return Array(12).fill(null);
+            
+            for (let i = 0; i < 12; i++) {
+                if (year === maxYear && (i + 1) > maxMonth) monthly[i] = null;
+            }
+            return monthly;
+        };
+
+        // 撈取動態年份的數據
+        const expPrev = getGlobalMonthlyData(prevYear, '出口');
+        const expCur = getGlobalMonthlyData(maxYear, '出口');
+        const impPrev = getGlobalMonthlyData(prevYear, '進口');
+        const impCur = getGlobalMonthlyData(maxYear, '進口');
+
+        const totPrev = expPrev.map((e, i) => e !== null ? e + impPrev[i] : null);
+        const totCur = expCur.map((e, i) => e !== null ? e + impCur[i] : null);
+        const balPrev = expPrev.map((e, i) => e !== null ? e - impPrev[i] : null);
+        const balCur = expCur.map((e, i) => e !== null ? e - impCur[i] : null);
+
+        let datasets = [];
+
+        // 線條樣式綁定動態年份名稱
+        const lineStyles = {
+            expPrev: { label: `${prevYear} 出口`, data: expPrev, borderColor: '#93C5FD', backgroundColor: '#93C5FD', borderDash: [5, 5], tension: 0.3 },
+            expCur: { label: `${maxYear} 出口`, data: expCur, borderColor: '#2563EB', backgroundColor: '#2563EB', borderWidth: 3, tension: 0.3 },
+            impPrev: { label: `${prevYear} 進口`, data: impPrev, borderColor: '#D8B4FE', backgroundColor: '#D8B4FE', borderDash: [5, 5], tension: 0.3 },
+            impCur: { label: `${maxYear} 進口`, data: impCur, borderColor: '#9333EA', backgroundColor: '#9333EA', borderWidth: 3, tension: 0.3 },
+            totPrev: { label: `${prevYear} 總額`, data: totPrev, borderColor: '#6EE7B7', backgroundColor: '#6EE7B7', borderDash: [5, 5], tension: 0.3 },
+            totCur: { label: `${maxYear} 總額`, data: totCur, borderColor: '#059669', backgroundColor: '#059669', borderWidth: 3, tension: 0.3 },
+            balPrev: { label: `${prevYear} 差額`, data: balPrev, borderColor: '#FCD34D', backgroundColor: '#FCD34D', borderDash: [5, 5], tension: 0.3 },
+            balCur: { label: `${maxYear} 差額`, data: balCur, borderColor: '#D97706', backgroundColor: '#D97706', borderWidth: 3, tension: 0.3 }
+        };
+
+        if (metric === 'all' || metric === 'total') datasets.push(lineStyles.totPrev, lineStyles.totCur);
+        if (metric === 'all' || metric === 'export') datasets.push(lineStyles.expPrev, lineStyles.expCur);
+        if (metric === 'all' || metric === 'import') datasets.push(lineStyles.impPrev, lineStyles.impCur);
+        if (metric === 'all' || metric === 'balance') datasets.push(lineStyles.balPrev, lineStyles.balCur);
+
+        // 計算 YoY 工具
+        const calcYoY = (cur, prev) => {
+            if (cur === null || prev === null || prev === 0) return '無對比數據';
+            const yoy = ((cur - prev) / Math.abs(prev)) * 100;
+            return (yoy > 0 ? '+' : '') + yoy.toFixed(1) + '%';
+        };
+
+        trendChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false }, 
+                plugins: {
+                    legend: { display: true, position: 'top', labels: { usePointStyle: true, boxWidth: 8 } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const lbl = context.dataset.label;
+                                const val = context.raw;
+                                const idx = context.dataIndex;
+                                
+                                // 🌟 判斷邏輯：只針對包含「最新年度(maxYear)」的線條計算並顯示 YoY
+                                if (lbl.includes(`${maxYear}`)) {
+                                    let yoyStr = '';
+                                    if (lbl.includes('出口')) yoyStr = calcYoY(val, expPrev[idx]);
+                                    else if (lbl.includes('進口')) yoyStr = calcYoY(val, impPrev[idx]);
+                                    else if (lbl.includes('總額')) yoyStr = calcYoY(val, totPrev[idx]);
+                                    else if (lbl.includes('差額')) yoyStr = calcYoY(val, balPrev[idx]);
+                                    
+                                    return `${lbl}: ${fmtNum(val)} 億美元  (YoY: ${yoyStr})`;
+                                } else {
+                                    // 前一年度的線條只顯示金額，不顯示 YoY
+                                    return `${lbl}: ${fmtNum(val)} 億美元`;
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { 
+                        title: { display: true, text: '單位：億美元', align: 'end', color: '#64748b' },
+                        ticks: { callback: v => v.toLocaleString() } 
+                    }
+                }
+            }
+        });
+    }
+
+</script>
+</body>
+</html>
